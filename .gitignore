@@ -1,0 +1,31 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Downloaded model weights and accentizer data (fetched at runtime)
+model/
+.hf/
+*.onnx
+
+# Logs
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
