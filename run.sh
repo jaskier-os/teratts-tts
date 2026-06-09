@@ -18,7 +18,6 @@ fi
 source venv/bin/activate
 
 echo "[teratts-tts] Installing dependencies..."
-pip install -q --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple torch
 pip install -q -r requirements.txt
 
 echo "[teratts-tts] Starting server on ${TTS_HOST:-0.0.0.0}:${TTS_PORT:-10018}..."
