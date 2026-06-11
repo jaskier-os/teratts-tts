@@ -1,5 +1,7 @@
 # teratts-tts
 
+> **Docs & wiki:** [github.com/jaskier-os/docs/wiki](https://github.com/jaskier-os/docs/wiki)
+
 HTTP microservice for Russian text-to-speech built on
 [TeraTTS](https://github.com/Tera2Space/TeraTTS) with
 [RUAccent](https://github.com/Den4ikAI/ruaccent) for automatic stress placement.
