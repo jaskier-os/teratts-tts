@@ -17,6 +17,8 @@ from aiohttp import web
 from TeraTTS import TTS
 from ruaccent import RUAccent
 
+import english_g2p
+
 logger = logging.getLogger("teratts-tts")
 
 tts = None
@@ -24,6 +26,72 @@ accentizer = None
 has_ffmpeg = False
 SAMPLE_RATE = 22050
 LENGTH_SCALE = 0.81
+
+
+def load_models(model="TeraTTS/glados2-g2p-vits"):
+    """Load RUAccent + TeraTTS and probe ffmpeg. Idempotent."""
+    global tts, accentizer, has_ffmpeg
+    if tts is not None:
+        return
+
+    logger.info("Loading RUAccent...")
+    accentizer = RUAccent()
+    accentizer.load(omograph_model_size='turbo', use_dictionary=True)
+    logger.info("RUAccent loaded.")
+
+    logger.info("Loading TeraTTS model: %s", model)
+    tts = TTS(model, add_time_to_end=0.5, tokenizer_load_dict=True)
+    logger.info("Model loaded.")
+
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
+        has_ffmpeg = True
+        logger.info("ffmpeg available -- Opus output supported")
+    except Exception:
+        has_ffmpeg = False
+        logger.info("ffmpeg not found -- WAV output only")
+
+
+def _ru_symbols(run):
+    """Russian run -> model phoneme symbols via RUAccent + tokenizer g2p."""
+    try:
+        run = accentizer.process_all(run)
+    except Exception as e:
+        logger.warning("RUAccent failed for %r: %s", run[:50], e)
+    return tts.tokenizer.g2p(run)[1]  # phoneme strings (index 1), not ids
+
+
+def synth_text(text, length_scale=LENGTH_SCALE):
+    """Synthesize mixed RU/EN text in one ONNX call.
+
+    Cyrillic runs use RUAccent + RU g2p; Latin runs use English g2p mapped to
+    RU phoneme symbols. Symbols are concatenated and fed to the model once."""
+    pim = tts.tokenizer.config["phoneme_id_map"]
+    symbols = []
+    for run, lang in english_g2p.split_by_script(text):
+        if lang == "en":
+            try:
+                symbols.extend(english_g2p.english_to_ru_symbols(run))
+            except Exception as e:
+                logger.warning("English g2p failed for %r: %s -- accent fallback", run[:50], e)
+                symbols.extend(_ru_symbols(run))
+        else:
+            symbols.extend(_ru_symbols(run))
+    ids = []
+    ids.extend(pim["^"])
+    ids.extend(pim["_"])
+    for s in symbols:
+        if s in pim:
+            ids.extend(pim[s])
+            ids.extend(pim["_"])
+    ids.extend(pim["$"])
+    ids = tts._intersperse(ids, 0)
+    arr = np.expand_dims(np.array(ids, dtype=np.int64), 0)
+    lengths = np.array([arr.shape[1]], dtype=np.int64)
+    scales = np.array([0.667, length_scale, 0.8], dtype=np.float32)
+    audio = tts.model.run(None, {"input": arr, "input_lengths": lengths,
+                                 "scales": scales, "sid": None})[0][0, 0][0]
+    return tts._add_silent(audio, silence_duration=tts.add_time_to_end)
 
 
 def wav_to_opus(wav_bytes: bytes) -> bytes:
@@ -57,12 +125,7 @@ async def handle_tts(request):
     if not text.strip():
         return web.Response(status=400, text="Empty text")
 
-    try:
-        processed = accentizer.process_all(text)
-    except Exception as e:
-        logger.warning("RUAccent failed for '%s': %s -- using unaccented text", text[:50], e)
-        processed = text
-    audio = tts(processed, lenght_scale=LENGTH_SCALE)
+    audio = synth_text(text, length_scale=LENGTH_SCALE)
     wav_bytes = audio_to_wav(audio)
 
     accept = request.headers.get("Accept", "")
@@ -89,25 +152,10 @@ def main():
                         default=float(os.environ.get("TTS_LENGTH_SCALE", "0.81")))
     args = parser.parse_args()
 
-    global tts, accentizer, has_ffmpeg, LENGTH_SCALE
+    global LENGTH_SCALE
     LENGTH_SCALE = args.length_scale
 
-    logger.info("Loading RUAccent...")
-    accentizer = RUAccent()
-    accentizer.load(omograph_model_size='turbo', use_dictionary=True)
-    logger.info("RUAccent loaded.")
-
-    logger.info("Loading TeraTTS model: %s", args.model)
-    tts = TTS(args.model, add_time_to_end=0.5, tokenizer_load_dict=True)
-    logger.info("Model loaded.")
-
-    try:
-        subprocess.run(["ffmpeg", "-version"], capture_output=True, timeout=5)
-        has_ffmpeg = True
-        logger.info("ffmpeg available -- Opus output supported")
-    except Exception:
-        has_ffmpeg = False
-        logger.info("ffmpeg not found -- WAV output only")
+    load_models(args.model)
 
     app = web.Application()
     app.router.add_post("/", handle_tts)

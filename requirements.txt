@@ -2,3 +2,5 @@ TeraTTS
 ruaccent
 aiohttp
 numpy
+g2p_en
+nltk
