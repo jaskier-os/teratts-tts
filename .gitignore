@@ -29,3 +29,6 @@ model/
 .idea/
 .vscode/
 .DS_Store
+
+# Generated experiment audio
+scripts/out/
