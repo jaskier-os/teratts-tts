@@ -28,4 +28,8 @@ python -c "from TeraTTS import TTS; TTS('${MODEL}', add_time_to_end=0.5, tokeniz
 echo "[teratts-tts] Pre-downloading RUAccent accentizer data"
 python -c "from ruaccent import RUAccent; a = RUAccent(); a.load(omograph_model_size='turbo', use_dictionary=True)"
 
+echo "[teratts-tts] Pre-downloading g2p_en NLTK data"
+python -c "import nltk; [nltk.download(r, quiet=True) for r in ['averaged_perceptron_tagger','averaged_perceptron_tagger_eng','cmudict','punkt','punkt_tab']]"
+python -c "from g2p_en import G2p; G2p()('warmup test')"
+
 echo "[teratts-tts] Done."
