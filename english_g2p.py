@@ -66,3 +66,43 @@ def english_to_ru_symbols(text):
         else:
             syms.extend(arpa_to_ru_symbols([tok]))
     return syms
+
+
+def _is_cyrillic(ch):
+    return "\u0400" <= ch <= "\u04FF"
+
+
+def _is_latin(ch):
+    return ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+
+
+def split_by_script(text):
+    """Split text into contiguous (run_text, 'ru'|'en') segments.
+
+    Non-alphabetic chars attach to the current run. Adjacent same-lang runs are
+    merged. A leading non-alpha run defaults to 'ru' (Russian-first server)."""
+    if not text:
+        return []
+    segments = []
+    cur_lang = "ru"
+    cur = ""
+    for ch in text:
+        if _is_cyrillic(ch):
+            if cur_lang != "ru" and cur:
+                segments.append((cur, cur_lang)); cur = ""
+            cur_lang = "ru"; cur += ch
+        elif _is_latin(ch):
+            if cur_lang != "en" and cur:
+                segments.append((cur, cur_lang)); cur = ""
+            cur_lang = "en"; cur += ch
+        else:
+            cur += ch
+    if cur:
+        segments.append((cur, cur_lang))
+    merged = []
+    for seg in segments:
+        if merged and merged[-1][1] == seg[1]:
+            merged[-1] = (merged[-1][0] + seg[0], seg[1])
+        else:
+            merged.append(seg)
+    return merged
